@@ -68,11 +68,10 @@ Perfect! I've selected the **Python Basics & Syntax** quiz for you. This quiz ha
 **Question 1 of 9 (EASY):**
 
 What happens when you run the following Python code?
-```python
-x = 10
-y = 20
-print(x + y)
-```
+
+    x = 10
+    y = 20
+    print(x + y)
 
 **A)** Prints 30  
 **B)** Prints 10 20  
@@ -152,6 +151,10 @@ Two distinct threats with different mitigations:
 - `compare_prompts.py` — Automated comparison runner; generates transcripts for all strategy × temperature combinations.
 - `tests/` — Unit test suite (mocked Anthropic and httpx, no real network calls).
 - `comparisons/` — Generated transcripts from `compare_prompts.py`; useful for side-by-side review.
+
+### UX
+
+The user experience was not factored in at all when designing this small learning project. For example, the chat window will hang while the model calls tools, which is not ideal user experience and makes it feel slow and clunky, particularly in the initial tool call to fetch all available categories of quizzes. Having some output for users (anything from a small 'Thinking...' spinner to even streaming the output) would make the experience much more pleasant for a production app.
 
 ## Testing
 
