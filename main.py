@@ -18,12 +18,21 @@ from quiz_api import (
     FatalQuizApiError,
 )
 
+FORCED_TOOL_TEMPERATURE = 0.0
+
 
 class QuizTutor:
-    def __init__(self):
+    def __init__(
+        self,
+        system_prompt=QUIZ_TUTOR_SYSTEM_PROMPT,
+        hint_prompt=HINT_REQUEST_PROMPT,
+        temperature=1.0,
+    ):
         self.client = self._initialize_client()
         self.conversation_history = []
-        self.system_prompt = QUIZ_TUTOR_SYSTEM_PROMPT
+        self.system_prompt = system_prompt
+        self.hint_prompt = hint_prompt
+        self.temperature = temperature
         self.model = "claude-haiku-4-5"
 
     def _initialize_client(self):
@@ -53,6 +62,7 @@ class QuizTutor:
                 max_tokens=1024,
                 system=self.system_prompt,
                 messages=self.conversation_history,
+                temperature=self.temperature,
             )
             self.conversation_history.append(
                 {"role": "assistant", "content": response.content}
@@ -84,6 +94,7 @@ class QuizTutor:
             messages=self.conversation_history,
             tools=[tool_schema],
             tool_choice={"type": "tool", "name": tool_schema["name"]},  # type: ignore
+            temperature=FORCED_TOOL_TEMPERATURE,
         )
         self.conversation_history.append(
             {"role": "assistant", "content": response.content}
@@ -177,7 +188,7 @@ class QuizTutor:
                 break
 
             elif user_input.lower() == "hint":
-                response = self.chat(HINT_REQUEST_PROMPT)
+                response = self.chat(self.hint_prompt)
                 if response:
                     print(f"\n💡 Hint: {response}\n")
 

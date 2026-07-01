@@ -1,5 +1,10 @@
 """System prompts and prompt templates for Quiz Tutor application."""
 
+CONCISE_SYSTEM_PROMPT = """You are a quiz tutor. Evaluate answers accurately and briefly.
+State whether the answer is correct or incorrect, give a one-sentence reason, and move on.
+No elaboration, no encouragement phrases, no padding.
+Use only the real quiz questions, answers, and explanations provided — do not invent your own."""
+
 QUIZ_TUTOR_SYSTEM_PROMPT = """You are an expert quiz tutor. Your responsibilities are:
 1. Present quiz questions to users fairly
 2. Evaluate user answers and provide constructive feedback
@@ -32,6 +37,7 @@ SELECT_QUIZ_PROMPT = (
     "Then begin by asking the user the first question."
 )
 
+CONCISE_HINT_PROMPT = "Give a one-sentence hint. No elaboration."
 
 HINT_REQUEST_PROMPT = (
     "Can you provide a helpful hint for this question without giving away the answer?"
@@ -43,3 +49,20 @@ QUIZ_SUMMARY_PROMPT = (
     "Please provide a brief summary of my performance on this quiz, "
     "including strengths and areas for improvement."
 )
+
+
+def get_prompt_strategies():
+    """Return available prompt strategies as a dict."""
+    return {
+        "encouraging": {
+            "system_prompt": QUIZ_TUTOR_SYSTEM_PROMPT,
+            "hint_prompt": HINT_REQUEST_PROMPT,
+        },
+        "concise": {
+            "system_prompt": CONCISE_SYSTEM_PROMPT,
+            "hint_prompt": CONCISE_HINT_PROMPT,
+        },
+    }
+
+
+PROMPT_STRATEGIES = get_prompt_strategies()
