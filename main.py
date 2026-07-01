@@ -1,12 +1,19 @@
 import os
 from anthropic import Anthropic, RateLimitError, APIError
+from prompts import (
+    QUIZ_TUTOR_SYSTEM_PROMPT,
+    get_quiz_start_prompt,
+    HINT_REQUEST_PROMPT,
+    NEXT_QUESTION_PROMPT,
+    QUIZ_SUMMARY_PROMPT,
+)
 
 
 class QuizTutor:
     def __init__(self):
         self.client = self._initialize_client()
         self.conversation_history = []
-        self.system_prompt = """You are a quiz tutor. Generate quizzes."""
+        self.system_prompt = QUIZ_TUTOR_SYSTEM_PROMPT
         self.model = 'claude-haiku-4-5'
 
     def _initialize_client(self):
@@ -86,12 +93,7 @@ class QuizTutor:
             except ValueError:
                 num_questions = "5"
 
-        prompt = (
-            f"Let's start a quiz on '{topic}' at {difficulty} difficulty level. "
-            f"I would like {num_questions} questions total. "
-            f"Please begin by asking the first question."
-        )
-
+        prompt = get_quiz_start_prompt(topic, difficulty, num_questions)
         response = self.chat(prompt)
         if response:
             print(f"\n{response}\n")
@@ -108,23 +110,18 @@ class QuizTutor:
                 continue
 
             if user_input.lower() == "quit":
-                response = self.chat(
-                    "Please provide a brief summary of my performance on this quiz, "
-                    "including strengths and areas for improvement."
-                )
+                response = self.chat(QUIZ_SUMMARY_PROMPT)
                 if response:
                     print(f"\n📊 QUIZ SUMMARY:\n{response}\n")
                 break
 
             elif user_input.lower() == "hint":
-                response = self.chat(
-                    "Can you provide a helpful hint for this question without giving away the answer?"
-                )
+                response = self.chat(HINT_REQUEST_PROMPT)
                 if response:
                     print(f"\n💡 Hint: {response}\n")
 
             elif user_input.lower() == "next":
-                response = self.chat("Move to the next question, please.")
+                response = self.chat(NEXT_QUESTION_PROMPT)
                 if response:
                     print(f"\n{response}\n")
 
