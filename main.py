@@ -186,17 +186,47 @@ class QuizTutor:
 
         self._quiz_loop()
 
+    def _get_valid_answer_options(self) -> list[str]:
+        """Get list of valid answer letter options (A, B, C, ...) for current question."""
+        if self.current_question_index >= len(self.quiz_questions):
+            return []
+        current_question = self.quiz_questions[self.current_question_index]
+        return [a.get("label", "") for a in current_question.get("answers", [])]
+
+    def _is_valid_answer(self, user_input: str) -> bool:
+        """Check if user input is a valid answer option, 'hint', or 'quit'."""
+        lower_input = user_input.lower()
+        if lower_input in ("hint", "quit"):
+            return True
+        valid_options = self._get_valid_answer_options()
+        return user_input.upper() in valid_options
+
+    def _get_invalid_answer_message(self) -> str:
+        """Generate error message listing valid options."""
+        valid_options = self._get_valid_answer_options()
+        if not valid_options:
+            return "No valid options available. Type 'quit' to end the quiz."
+        options_str = ", ".join(valid_options)
+        return (
+            f"Invalid response. Please enter one of: {options_str}, 'hint', or 'quit'."
+        )
+
     def _quiz_loop(self):
         """Interactive loop for answering quiz questions.
         Automatically advances to the next question after each answer.
         Users can request hints or quit at any time.
-        Tracks per-question correctness using the QuizAPI's ground truth."""
+        Tracks per-question correctness using the QuizAPI's ground truth.
+        Validates that answers match one of the presented options."""
         while True:
             user_input = input(
                 "Your answer (or 'hint' for hint, 'quit' to end): "
             ).strip()
 
             if not user_input:
+                continue
+
+            if not self._is_valid_answer(user_input):
+                print(f"\n❌ {self._get_invalid_answer_message()}\n")
                 continue
 
             if user_input.lower() == "quit":

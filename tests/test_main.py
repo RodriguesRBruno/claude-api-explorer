@@ -288,3 +288,202 @@ class TestQuizResultTracking:
             assert any("Math" in str(msg) for msg in messages), (
                 "Summary should include topic"
             )
+
+
+class TestInputValidation:
+    """Test answer input validation in _quiz_loop."""
+
+    def test_get_valid_answer_options(self, mock_oauth):
+        """_get_valid_answer_options should return letter labels for current question."""
+        with mock.patch("main.Anthropic"):
+            tutor = QuizTutor()
+            tutor.quiz_questions = [
+                {
+                    "id": "q1",
+                    "text": "Question?",
+                    "answers": [
+                        {
+                            "id": "a1",
+                            "text": "Option A",
+                            "label": "A",
+                            "isCorrect": True,
+                        },
+                        {
+                            "id": "a2",
+                            "text": "Option B",
+                            "label": "B",
+                            "isCorrect": False,
+                        },
+                        {
+                            "id": "a3",
+                            "text": "Option C",
+                            "label": "C",
+                            "isCorrect": False,
+                        },
+                    ],
+                }
+            ]
+            tutor.current_question_index = 0
+            options = tutor._get_valid_answer_options()
+            assert options == ["A", "B", "C"]
+
+    def test_get_valid_answer_options_beyond_end(self, mock_oauth):
+        """_get_valid_answer_options should return empty list if past last question."""
+        with mock.patch("main.Anthropic"):
+            tutor = QuizTutor()
+            tutor.quiz_questions = [{"id": "q1", "answers": []}]
+            tutor.current_question_index = 1
+            options = tutor._get_valid_answer_options()
+            assert options == []
+
+    def test_is_valid_answer_letter(self, mock_oauth):
+        """_is_valid_answer should accept valid letter options."""
+        with mock.patch("main.Anthropic"):
+            tutor = QuizTutor()
+            tutor.quiz_questions = [
+                {
+                    "id": "q1",
+                    "answers": [
+                        {"label": "A", "isCorrect": True},
+                        {"label": "B", "isCorrect": False},
+                    ],
+                }
+            ]
+            tutor.current_question_index = 0
+            assert tutor._is_valid_answer("A") is True
+            assert tutor._is_valid_answer("B") is True
+            assert tutor._is_valid_answer("a") is True
+            assert tutor._is_valid_answer("b") is True
+
+    def test_is_valid_answer_invalid_letter(self, mock_oauth):
+        """_is_valid_answer should reject letters not in the options."""
+        with mock.patch("main.Anthropic"):
+            tutor = QuizTutor()
+            tutor.quiz_questions = [
+                {
+                    "id": "q1",
+                    "answers": [
+                        {"label": "A", "isCorrect": True},
+                        {"label": "B", "isCorrect": False},
+                    ],
+                }
+            ]
+            tutor.current_question_index = 0
+            assert tutor._is_valid_answer("C") is False
+            assert tutor._is_valid_answer("D") is False
+
+    def test_is_valid_answer_hint_quit(self, mock_oauth):
+        """_is_valid_answer should accept 'hint' and 'quit' regardless of question."""
+        with mock.patch("main.Anthropic"):
+            tutor = QuizTutor()
+            tutor.quiz_questions = []
+            tutor.current_question_index = 0
+            assert tutor._is_valid_answer("hint") is True
+            assert tutor._is_valid_answer("HINT") is True
+            assert tutor._is_valid_answer("quit") is True
+            assert tutor._is_valid_answer("QUIT") is True
+
+    def test_get_invalid_answer_message(self, mock_oauth):
+        """_get_invalid_answer_message should show valid options."""
+        with mock.patch("main.Anthropic"):
+            tutor = QuizTutor()
+            tutor.quiz_questions = [
+                {
+                    "id": "q1",
+                    "answers": [
+                        {"label": "A"},
+                        {"label": "B"},
+                        {"label": "C"},
+                    ],
+                }
+            ]
+            tutor.current_question_index = 0
+            message = tutor._get_invalid_answer_message()
+            assert "A, B, C" in message
+            assert "'hint'" in message
+            assert "'quit'" in message
+
+    def test_quiz_loop_rejects_invalid_answer(self, mock_oauth):
+        """_quiz_loop should reject invalid answers and re-prompt."""
+        with mock.patch("main.Anthropic") as mock_client_class:
+            mock_client = mock.MagicMock()
+            mock_client_class.return_value = mock_client
+            mock_resp = mock.MagicMock()
+            mock_resp.content = [mock.MagicMock(type="text", text="response")]
+            mock_client.messages.create.return_value = mock_resp
+            tutor = QuizTutor()
+            tutor.quiz_questions = [
+                {
+                    "id": "q1",
+                    "text": "Question?",
+                    "answers": [
+                        {
+                            "id": "a1",
+                            "text": "Option A",
+                            "label": "A",
+                            "isCorrect": True,
+                        },
+                        {
+                            "id": "a2",
+                            "text": "Option B",
+                            "label": "B",
+                            "isCorrect": False,
+                        },
+                    ],
+                }
+            ]
+            tutor.quiz_topic = "Test"
+            tutor.current_question_index = 0
+            tutor.quiz_results = []
+            # Input: invalid letter (X), then valid letter (A), then quit
+            with mock.patch("builtins.input", side_effect=["X", "A", "quit"]):
+                with mock.patch("builtins.print") as mock_print:
+                    tutor._quiz_loop()
+            # Check that invalid answer message was printed
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any("Invalid response" in str(call) for call in print_calls), (
+                "Should print invalid answer message"
+            )
+            # Check that valid answer was graded (quiz_results should have 1 entry)
+            assert len(tutor.quiz_results) == 1
+            assert tutor.quiz_results[0].question_number == 1
+
+    def test_quiz_loop_allows_valid_case_variations(self, mock_oauth):
+        """_quiz_loop should accept both uppercase and lowercase valid answers."""
+        with mock.patch("main.Anthropic") as mock_client_class:
+            mock_client = mock.MagicMock()
+            mock_client_class.return_value = mock_client
+            mock_resp = mock.MagicMock()
+            mock_resp.content = [mock.MagicMock(type="text", text="response")]
+            mock_client.messages.create.return_value = mock_resp
+            tutor = QuizTutor()
+            tutor.quiz_questions = [
+                {
+                    "id": "q1",
+                    "text": "Question?",
+                    "answers": [
+                        {
+                            "id": "a1",
+                            "text": "Option A",
+                            "label": "A",
+                            "isCorrect": True,
+                        },
+                        {
+                            "id": "a2",
+                            "text": "Option B",
+                            "label": "B",
+                            "isCorrect": False,
+                        },
+                    ],
+                }
+            ]
+            tutor.quiz_topic = "Test"
+            tutor.current_question_index = 0
+            tutor.quiz_results = []
+            # Input: lowercase 'a', then quit
+            with mock.patch("builtins.input", side_effect=["a", "quit"]):
+                with mock.patch("builtins.print"):
+                    tutor._quiz_loop()
+            # Check that lowercase answer was accepted and graded
+            assert len(tutor.quiz_results) == 1
+            assert tutor.quiz_results[0].user_answer == "Option A"
