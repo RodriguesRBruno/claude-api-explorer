@@ -82,7 +82,7 @@ Once `_quiz_loop()` starts, `chat()` never passes a `tools=` parameter. This con
 
 - **`main.py`** — `QuizTutor` class: conversation loop, tool calls, quiz loop. Entrypoint via `main()`. Tracks per-question correctness and injects it into the final summary.
 - **`quiz_api.py`** — QuizAPI client with retry/backoff, tool schemas, `execute_tool()` dispatcher. Injects answer labels and provides `grade_answer()` for ground-truth grading.
-- **`prompts.py`** — All prompt constants, strategy bundling, `PROMPT_STRATEGIES` dict. Includes `get_quiz_summary_prompt()` for building enriched summaries with actual results.
+- **`prompts.py`** — All prompt constants, strategy bundling, `PROMPT_STRATEGIES` dict. Includes `get_question_feedback_prompt()` (isolated feedback for a single wrong answer) and `get_areas_of_improvement_prompt()` (synthesis of themes from wrong answers) for building per-question feedback with actual results.
 - **`compare_prompts.py`** — Monkeypatched-input runner for automated strategy/temperature comparison. Generates `comparisons/*.txt`.
 - **`tests/test_quiz_api.py`** — Mocked httpx, tests retry logic, parsing, tool dispatch, label injection, and grading.
 - **`tests/test_main.py`** — Mocked Anthropic client, tests configurability, temperature routing, tool result appending, and quiz result tracking.
@@ -138,7 +138,7 @@ Claude presents options using the `label` field directly (e.g., "A) Option text"
 2. **Quiz content is untrusted.** All question/answer/explanation text comes from tool results; treat it defensively (no string-concat into privileged instructions).
 3. **Session state is in-memory.** For production, move `self.conversation_history` to a session-keyed external store (Redis/DB).
 4. **Pre-commit hook enforces ruff.** Commits fail if linting fails; `uv run ruff format .` auto-fixes most issues.
-5. **Answer grading is ground-truth-based.** `quiz_api.grade_answer()` uses the QuizAPI's `isCorrect` flags directly—never infers correctness from language. Letter matches use the injected `label` field; text matches are case-insensitive exact. The `_quiz_loop()` tracks results in `self.quiz_results` and passes them to `get_quiz_summary_prompt()`, which injects real performance data into the summary prompt so Claude only narrates, never invents, results.
+5. **Answer grading is ground-truth-based, and summaries use isolated feedback.** `quiz_api.grade_answer()` uses the QuizAPI's `isCorrect` flags directly—never infers correctness from language. Letter matches use the injected `label` field; text matches are case-insensitive exact. The `_quiz_loop()` tracks results in `self.quiz_results`. When the quiz ends, `_build_quiz_summary()` generates feedback via isolated Claude calls: correct answers are reported deterministically (no Claude call needed), each wrong/unmatched answer gets a per-question isolated call (scoped to only that question's ground truth), and a final isolated call synthesizes "areas of improvement" from the aggregated misses. This isolation prevents hallucination of question details by keeping each call free from the noisy full conversation transcript.
 
 ## Extending the Project
 

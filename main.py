@@ -3,12 +3,14 @@ import json
 from anthropic import Anthropic, RateLimitError, APIError
 from prompts import (
     QUIZ_TUTOR_SYSTEM_PROMPT,
+    QUIZ_SUMMARY_PROMPT,
     get_list_quizzes_prompt,
     TOPIC_LIST_REQUEST_PROMPT,
     SELECT_QUIZ_PROMPT,
     HINT_REQUEST_PROMPT,
     NEXT_QUESTION_PROMPT,
-    get_quiz_summary_prompt,
+    get_question_feedback_prompt,
+    get_areas_of_improvement_prompt,
 )
 from quiz_api import (
     LIST_TOPICS_TOOL,
@@ -81,6 +83,28 @@ class QuizTutor:
             return None
         except APIError as e:
             print(f"\n❌ API Error: {e}")
+            return None
+
+    def _isolated_completion(self, prompt: str) -> str | None:
+        """One-off completion isolated from conversation_history — used for
+        per-question feedback and areas-of-improvement synthesis so the noisy
+        full transcript can't leak into or bias these outputs. No tools, no
+        history pollution."""
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=512,
+                system=self.system_prompt,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=self.temperature,
+            )
+            return next((b.text for b in response.content if b.type == "text"), "")
+        except RateLimitError as e:
+            print(str(e))
+            print("\n⚠️  Rate limit reached generating feedback.")
+            return None
+        except APIError as e:
+            print(f"\n❌ API Error generating feedback: {e}")
             return None
 
     def chat(self, user_message):
@@ -186,6 +210,67 @@ class QuizTutor:
 
         self._quiz_loop()
 
+    def _build_quiz_summary(self) -> str:
+        """Build a comprehensive summary of quiz performance with per-question
+        isolation: correct answers need no Claude call, each wrong answer gets
+        its own isolated feedback call, and a final call synthesizes areas of
+        improvement from the misses only."""
+        if not self.quiz_results:
+            fallback = self.chat(QUIZ_SUMMARY_PROMPT)
+            return fallback or "(Unable to generate summary at this time)"
+
+        wrong_results = [r for r in self.quiz_results if not (r.matched and r.correct)]
+
+        feedback_by_question: dict[int, str | None] = {
+            r.question_number: self._isolated_completion(
+                get_question_feedback_prompt(r)
+            )
+            for r in wrong_results
+        }
+
+        lines = ["📊 Here's how you did:\n"]
+
+        for result in self.quiz_results:
+            if result.matched and result.correct:
+                lines.append(
+                    f"{result.question_number}. {result.question}\n   ✓ Correct\n"
+                )
+                continue
+
+            status = "✗ Incorrect" if result.matched else "❓ Unverified"
+            lines.append(
+                f"{result.question_number}. {result.question}\n"
+                f"   {status}\n"
+                f"   Your answer: {result.user_answer}\n"
+                f"   Correct answer: {result.correct_text}\n"
+            )
+
+            feedback = feedback_by_question.get(result.question_number)
+            if feedback:
+                lines.append(f"   Feedback: {feedback}\n")
+            else:
+                lines.append(
+                    "   Feedback: (unable to generate feedback for this question)\n"
+                )
+
+        if wrong_results:
+            filtered_feedback = {
+                k: v for k, v in feedback_by_question.items() if v is not None
+            }
+            improvement = self._isolated_completion(
+                get_areas_of_improvement_prompt(wrong_results, filtered_feedback)  # type: ignore
+            )
+            if improvement:
+                lines.append(f"\n📈 Areas for improvement:\n{improvement}\n")
+            else:
+                lines.append(
+                    "\n📈 Areas for improvement: (unable to generate at this time)\n"
+                )
+        else:
+            lines.append("\n🎉 Perfect score — no areas of improvement needed!\n")
+
+        return "".join(lines)
+
     def _get_valid_answer_options(self) -> list[str]:
         """Get list of valid answer letter options (A, B, C, ...) for current question."""
         if self.current_question_index >= len(self.quiz_questions):
@@ -230,9 +315,9 @@ class QuizTutor:
                 continue
 
             if user_input.lower() == "quit":
-                response = self.chat(get_quiz_summary_prompt(self.quiz_results))
-                if response:
-                    print(f"\n📊 QUIZ SUMMARY:\n{response}\n")
+                summary = self._build_quiz_summary()
+                if summary:
+                    print(f"\n📊 QUIZ SUMMARY:\n{summary}\n")
                 break
 
             elif user_input.lower() == "hint":
@@ -253,6 +338,7 @@ class QuizTutor:
                             correct=grade_result.get("correct"),
                             user_answer=grade_result.get("selected_text", ""),
                             correct_text=grade_result.get("correct_text", ""),
+                            explanation=current_question.get("explanation", "") or "",
                         )
                     )
                     self.current_question_index += 1

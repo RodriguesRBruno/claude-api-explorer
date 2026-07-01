@@ -4,6 +4,7 @@ import os
 from unittest import mock
 
 import pytest
+from anthropic import RateLimitError
 
 from main import FORCED_TOOL_TEMPERATURE, QuizTutor
 from prompts import HINT_REQUEST_PROMPT, QUIZ_TUTOR_SYSTEM_PROMPT
@@ -256,13 +257,13 @@ class TestQuizResultTracking:
             assert result.correct_text == "4"
             assert result.question_number == 1
 
-    def test_quiz_loop_uses_enriched_summary_prompt(self, mock_oauth):
-        """_quiz_loop on quit should use get_quiz_summary_prompt with results."""
+    def test_quiz_loop_all_correct_skips_claude_calls(self, mock_oauth):
+        """_quiz_loop with all-correct results should skip isolated feedback calls."""
         with mock.patch("main.Anthropic") as mock_client_class:
             mock_client = mock.MagicMock()
             mock_client_class.return_value = mock_client
             mock_resp = mock.MagicMock()
-            mock_resp.content = [mock.MagicMock(type="text", text="Great job!")]
+            mock_resp.content = [mock.MagicMock(type="text", text="")]
             mock_client.messages.create.return_value = mock_resp
             tutor = QuizTutor()
             tutor.quiz_results = [
@@ -274,20 +275,159 @@ class TestQuizResultTracking:
                     correct=True,
                     user_answer="4",
                     correct_text="4",
+                    explanation="Two plus two equals four.",
                 )
             ]
             with mock.patch("builtins.input", side_effect=["quit"]):
                 with mock.patch("builtins.print"):
                     tutor._quiz_loop()
-            # Check that messages.create was called
-            assert mock_client.messages.create.called
-            # The chat call should have included the enriched summary prompt
-            call_args = mock_client.messages.create.call_args
-            messages = call_args[1]["messages"]
-            # Last user message should contain the summary data
-            assert any("Math" in str(msg) for msg in messages), (
-                "Summary should include topic"
+            # All correct → no isolated feedback calls (no _isolated_completion calls)
+            # So messages.create should not be called for feedback
+            assert mock_client.messages.create.call_count == 0
+
+
+class TestIsolatedCompletion:
+    """Test _isolated_completion method."""
+
+    def test_isolated_completion_fresh_messages(self, mock_oauth):
+        """_isolated_completion should use a fresh message list, not conversation_history."""
+        with mock.patch("main.Anthropic") as mock_client_class:
+            mock_client = mock.MagicMock()
+            mock_client_class.return_value = mock_client
+            mock_resp = mock.MagicMock()
+            mock_resp.content = [mock.MagicMock(type="text", text="feedback")]
+            mock_client.messages.create.return_value = mock_resp
+            tutor = QuizTutor()
+            tutor.conversation_history = [
+                {"role": "user", "content": "old message"},
+                {"role": "assistant", "content": "old response"},
+            ]
+            result = tutor._isolated_completion("new prompt")
+            assert result == "feedback"
+            # Check that messages passed to create is a fresh list with just the new prompt
+            call_kwargs = mock_client.messages.create.call_args[1]
+            messages = call_kwargs["messages"]
+            assert len(messages) == 1
+            assert messages[0]["role"] == "user"
+            assert messages[0]["content"] == "new prompt"
+            # conversation_history should be untouched
+            assert len(tutor.conversation_history) == 2
+
+    def test_isolated_completion_error_handling(self, mock_oauth):
+        """_isolated_completion should return None on rate limit error."""
+        with mock.patch("main.Anthropic") as mock_client_class:
+            mock_client = mock.MagicMock()
+            mock_client_class.return_value = mock_client
+            mock_client.messages.create.side_effect = RateLimitError(
+                message="Rate limited",
+                response=mock.MagicMock(status_code=429),
+                body={},
             )
+            tutor = QuizTutor()
+            with mock.patch("builtins.print"):
+                result = tutor._isolated_completion("test")
+            assert result is None
+
+
+class TestBuildQuizSummary:
+    """Test _build_quiz_summary method."""
+
+    def test_build_summary_one_wrong_one_correct(self, mock_oauth):
+        """_build_quiz_summary with mixed results should call isolated completion."""
+        with mock.patch("main.Anthropic") as mock_client_class:
+            mock_client = mock.MagicMock()
+            mock_client_class.return_value = mock_client
+            feedback_resp = mock.MagicMock()
+            feedback_resp.content = [
+                mock.MagicMock(type="text", text="You got this wrong.")
+            ]
+            improvement_resp = mock.MagicMock()
+            improvement_resp.content = [
+                mock.MagicMock(type="text", text="Focus on basics.")
+            ]
+            mock_client.messages.create.side_effect = [
+                feedback_resp,
+                improvement_resp,
+            ]
+            tutor = QuizTutor()
+            tutor.quiz_results = [
+                QuizResult(
+                    question_number=1,
+                    topic="Math",
+                    question="What is 2+2?",
+                    matched=True,
+                    correct=True,
+                    user_answer="4",
+                    correct_text="4",
+                    explanation="",
+                ),
+                QuizResult(
+                    question_number=2,
+                    topic="Math",
+                    question="What is 3+3?",
+                    matched=True,
+                    correct=False,
+                    user_answer="5",
+                    correct_text="6",
+                    explanation="Three plus three equals six.",
+                ),
+            ]
+            summary = tutor._build_quiz_summary()
+            # Should have 2 isolated calls: 1 for wrong question feedback, 1 for improvement
+            assert mock_client.messages.create.call_count == 2
+            # Summary should include both questions in order
+            assert "1. What is 2+2?" in summary
+            assert "2. What is 3+3?" in summary
+            assert "✓ Correct" in summary
+            assert "✗ Incorrect" in summary
+            assert "You got this wrong." in summary
+            assert "Focus on basics." in summary
+
+    def test_build_summary_graceful_failure(self, mock_oauth):
+        """_build_quiz_summary should handle isolated call failures gracefully."""
+        with mock.patch("main.Anthropic") as mock_client_class:
+            mock_client = mock.MagicMock()
+            mock_client_class.return_value = mock_client
+            mock_client.messages.create.side_effect = RateLimitError(
+                message="Rate limited",
+                response=mock.MagicMock(status_code=429),
+                body={},
+            )
+            tutor = QuizTutor()
+            tutor.quiz_results = [
+                QuizResult(
+                    question_number=1,
+                    topic="Math",
+                    question="What is 2+2?",
+                    matched=True,
+                    correct=False,
+                    user_answer="5",
+                    correct_text="4",
+                    explanation="",
+                ),
+            ]
+            with mock.patch("builtins.print"):
+                summary = tutor._build_quiz_summary()
+            # Should still contain ground truth even if feedback call fails
+            assert "1. What is 2+2?" in summary
+            assert "Your answer: 5" in summary
+            assert "Correct answer: 4" in summary
+            assert "(unable to generate feedback for this question)" in summary
+
+    def test_build_summary_empty_results_fallback(self, mock_oauth):
+        """_build_quiz_summary with empty results should use chat fallback."""
+        with mock.patch("main.Anthropic") as mock_client_class:
+            mock_client = mock.MagicMock()
+            mock_client_class.return_value = mock_client
+            mock_resp = mock.MagicMock()
+            mock_resp.content = [mock.MagicMock(type="text", text="Good job!")]
+            mock_client.messages.create.return_value = mock_resp
+            tutor = QuizTutor()
+            tutor.quiz_results = []
+            summary = tutor._build_quiz_summary()
+            # Should call chat (which calls messages.create with conversation_history)
+            assert mock_client.messages.create.called
+            assert "Good job!" in summary
 
 
 class TestInputValidation:
@@ -487,3 +627,98 @@ class TestInputValidation:
             # Check that lowercase answer was accepted and graded
             assert len(tutor.quiz_results) == 1
             assert tutor.quiz_results[0].user_answer == "Option A"
+
+
+class TestPromptBuilders:
+    """Test new prompt builder functions."""
+
+    def test_get_question_feedback_prompt_matched_answer(self):
+        """get_question_feedback_prompt for matched wrong answer includes explanation."""
+        from prompts import get_question_feedback_prompt
+
+        result = QuizResult(
+            question_number=1,
+            topic="Math",
+            question="What is 2+2?",
+            matched=True,
+            correct=False,
+            user_answer="5",
+            correct_text="4",
+            explanation="Two plus two equals four.",
+        )
+        prompt = get_question_feedback_prompt(result)
+        assert "What is 2+2?" in prompt
+        assert "5" in prompt
+        assert "4" in prompt
+        assert "Two plus two equals four." in prompt
+        assert "incorrectly" in prompt.lower()
+
+    def test_get_question_feedback_prompt_unmatched_answer(self):
+        """get_question_feedback_prompt for unmatched answer has different phrasing."""
+        from prompts import get_question_feedback_prompt
+
+        result = QuizResult(
+            question_number=1,
+            topic="Math",
+            question="What is 2+2?",
+            matched=False,
+            correct=None,
+            user_answer="invalid input",
+            correct_text="4",
+            explanation="",
+        )
+        prompt = get_question_feedback_prompt(result)
+        assert "What is 2+2?" in prompt
+        assert "invalid input" in prompt
+        assert "4" in prompt
+        assert "could not be matched" in prompt.lower()
+
+    def test_get_question_feedback_prompt_omits_empty_explanation(self):
+        """get_question_feedback_prompt should omit explanation line when empty."""
+        from prompts import get_question_feedback_prompt
+
+        result = QuizResult(
+            question_number=1,
+            topic="Math",
+            question="What is 2+2?",
+            matched=True,
+            correct=False,
+            user_answer="5",
+            correct_text="4",
+            explanation="",
+        )
+        prompt = get_question_feedback_prompt(result)
+        assert "Explanation from the quiz:" not in prompt
+
+    def test_get_areas_of_improvement_prompt_aggregates(self):
+        """get_areas_of_improvement_prompt aggregates wrong results and feedback."""
+        from prompts import get_areas_of_improvement_prompt
+
+        wrong_results = [
+            QuizResult(
+                question_number=2,
+                topic="Math",
+                question="What is 3+3?",
+                matched=True,
+                correct=False,
+                user_answer="5",
+                correct_text="6",
+                explanation="",
+            ),
+            QuizResult(
+                question_number=4,
+                topic="Math",
+                question="What is 5+5?",
+                matched=True,
+                correct=False,
+                user_answer="9",
+                correct_text="10",
+                explanation="",
+            ),
+        ]
+        feedback = {2: "You miscounted.", 4: "Off by one."}
+        prompt = get_areas_of_improvement_prompt(wrong_results, feedback)
+        assert "You miscounted." in prompt
+        assert "Off by one." in prompt
+        assert "2 incorrect answers" in prompt
+        assert "themes" in prompt.lower() or "patterns" in prompt.lower()

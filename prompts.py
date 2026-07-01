@@ -60,52 +60,66 @@ QUIZ_SUMMARY_PROMPT = (
 )
 
 
-def get_quiz_summary_prompt(results: list[QuizResult]) -> str:
+def get_question_feedback_prompt(result: QuizResult) -> str:
     """
-    Build an enriched summary prompt using actual per-question results (QuizResult instances).
-    Falls back to QUIZ_SUMMARY_PROMPT if results is empty.
+    Build an isolated, single-question feedback prompt for a wrong/unmatched answer.
+    Contains only that question's ground truth — question text, user's answer,
+    correct answer, and explanation (if present). No mention of other questions.
+    Instructs Claude to explain in 2-3 sentences why the answer was wrong and
+    what to remember, using only the given information — never invent.
     """
-    if not results:
-        return QUIZ_SUMMARY_PROMPT
-
-    summary_lines = [
-        "Based on my performance on this quiz, here are the actual results:\n"
-    ]
-
-    correct_count = sum(1 for r in results if r.correct is True and r.matched)
-    total_graded = sum(1 for r in results if r.matched)
-    unknown_count = sum(1 for r in results if not r.matched)
-
-    summary_lines.append(f"Topic: {results[0].topic}\n")
-    summary_lines.append(f"Answered: {len(results)} questions\n")
-    summary_lines.append(
-        f"Correct: {correct_count} out of {total_graded} graded questions\n"
+    explanation_line = (
+        f"Explanation from the quiz: {result.explanation}\n"
+        if result.explanation
+        else ""
     )
-    if unknown_count > 0:
-        summary_lines.append(f"Unable to verify: {unknown_count} answer(s)\n")
-    summary_lines.append("\nDetailed breakdown:\n")
 
-    for result in results:
-        if not result.matched:
-            status = "❓ (unverified answer)"
-        elif result.correct:
-            status = "✓ (correct)"
-        else:
-            status = "✗ (incorrect)"
-
-        summary_lines.append(
-            f"{result.question_number}. {result.question}\n"
-            f"   Your answer: {result.user_answer}\n"
-            f"   Correct answer: {result.correct_text}\n"
-            f"   Result: {status}\n"
+    if result.matched:
+        return (
+            f"A quiz taker answered this question incorrectly:\n\n"
+            f"Question: {result.question}\n"
+            f"Their answer: {result.user_answer}\n"
+            f"Correct answer: {result.correct_text}\n"
+            f"{explanation_line}\n"
+            "In 2-3 sentences, explain why their answer was wrong and what "
+            "concept or fact to remember for next time. Use only the information "
+            "given above — do not invent details about this question."
+        )
+    else:
+        return (
+            f"A quiz taker provided an answer that could not be matched to any "
+            f"of the available options:\n\n"
+            f"Question: {result.question}\n"
+            f"Their answer: {result.user_answer}\n"
+            f"Correct answer: {result.correct_text}\n"
+            f"{explanation_line}\n"
+            "In 2-3 sentences, explain what the correct answer is and why their "
+            "response did not match the available options. Use only the information "
+            "given above — do not invent details about this question."
         )
 
-    summary_lines.append(
-        "\nPlease provide a brief summary of my performance, "
-        "highlighting what I got right, what I got wrong, and areas for improvement."
+
+def get_areas_of_improvement_prompt(
+    wrong_results: list[QuizResult], feedback_by_question: dict[int, str]
+) -> str:
+    """
+    Build a synthesis prompt for identifying general areas of improvement
+    from the aggregated wrong/unmatched answers and their generated feedback.
+    Takes only incorrect results and their feedback (not the full transcript).
+    Asks for a short general paragraph identifying patterns/themes, not per-question restatement.
+    """
+    feedback_block = "\n".join(
+        f"Q{r.question_number}: {feedback_by_question.get(r.question_number, '(no feedback generated)')}"
+        for r in wrong_results
     )
 
-    return "".join(summary_lines)
+    return (
+        f"Based on these {len(wrong_results)} incorrect answers and their feedback:\n\n"
+        f"{feedback_block}\n\n"
+        "Provide a short paragraph (3-4 sentences) identifying general themes or "
+        "areas of improvement. Do not restate individual question details — focus on "
+        "overarching concepts or knowledge gaps. Use only the feedback above."
+    )
 
 
 def get_prompt_strategies():

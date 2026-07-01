@@ -12,3 +12,4 @@ class QuizResult:
     correct: bool | None
     user_answer: str
     correct_text: str
+    explanation: str = ""
