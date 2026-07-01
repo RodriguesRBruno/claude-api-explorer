@@ -62,10 +62,14 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "anthropic" },
+    { name = "httpx" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "anthropic", specifier = ">=0.115.0" }]
+requires-dist = [
+    { name = "anthropic", specifier = ">=0.115.0" },
+    { name = "httpx", specifier = ">=0.27.0" },
+]
 
 [[package]]
 name = "distro"
