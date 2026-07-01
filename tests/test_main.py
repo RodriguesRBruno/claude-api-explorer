@@ -7,6 +7,7 @@ import pytest
 
 from main import FORCED_TOOL_TEMPERATURE, QuizTutor
 from prompts import HINT_REQUEST_PROMPT, QUIZ_TUTOR_SYSTEM_PROMPT
+from quiz_result import QuizResult
 
 
 @pytest.fixture
@@ -246,12 +247,14 @@ class TestQuizResultTracking:
             # Should have tracked one result
             assert len(tutor.quiz_results) == 1
             result = tutor.quiz_results[0]
-            assert result["topic"] == "Math"
-            assert result["question"] == "What is 2+2?"
-            assert result["matched"] is True
-            assert result["correct"] is True
-            assert result["user_answer"] == "4"
-            assert result["correct_text"] == "4"
+            assert isinstance(result, QuizResult)
+            assert result.topic == "Math"
+            assert result.question == "What is 2+2?"
+            assert result.matched is True
+            assert result.correct is True
+            assert result.user_answer == "4"
+            assert result.correct_text == "4"
+            assert result.question_number == 1
 
     def test_quiz_loop_uses_enriched_summary_prompt(self, mock_oauth):
         """_quiz_loop on quit should use get_quiz_summary_prompt with results."""
@@ -259,20 +262,19 @@ class TestQuizResultTracking:
             mock_client = mock.MagicMock()
             mock_client_class.return_value = mock_client
             mock_resp = mock.MagicMock()
-            mock_resp.content = [
-                mock.MagicMock(type="text", text="Great job!")
-            ]
+            mock_resp.content = [mock.MagicMock(type="text", text="Great job!")]
             mock_client.messages.create.return_value = mock_resp
             tutor = QuizTutor()
             tutor.quiz_results = [
-                {
-                    "topic": "Math",
-                    "question": "What is 2+2?",
-                    "matched": True,
-                    "correct": True,
-                    "user_answer": "4",
-                    "correct_text": "4",
-                }
+                QuizResult(
+                    question_number=1,
+                    topic="Math",
+                    question="What is 2+2?",
+                    matched=True,
+                    correct=True,
+                    user_answer="4",
+                    correct_text="4",
+                )
             ]
             with mock.patch("builtins.input", side_effect=["quit"]):
                 with mock.patch("builtins.print"):
@@ -283,6 +285,6 @@ class TestQuizResultTracking:
             call_args = mock_client.messages.create.call_args
             messages = call_args[1]["messages"]
             # Last user message should contain the summary data
-            assert any(
-                "Math" in str(msg) for msg in messages
-            ), "Summary should include topic"
+            assert any("Math" in str(msg) for msg in messages), (
+                "Summary should include topic"
+            )

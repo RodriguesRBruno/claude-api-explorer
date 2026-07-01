@@ -1,3 +1,10 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from quiz_result import QuizResult
+
 """System prompts and prompt templates for Quiz Tutor application."""
 
 CONCISE_SYSTEM_PROMPT = """You are a quiz tutor. Evaluate answers accurately and briefly.
@@ -53,10 +60,9 @@ QUIZ_SUMMARY_PROMPT = (
 )
 
 
-def get_quiz_summary_prompt(results: list[dict]) -> str:
+def get_quiz_summary_prompt(results: list[QuizResult]) -> str:
     """
-    Build an enriched summary prompt using actual per-question results
-    (topic, question text, correct/incorrect/unknown, user's answer, correct answer).
+    Build an enriched summary prompt using actual per-question results (QuizResult instances).
     Falls back to QUIZ_SUMMARY_PROMPT if results is empty.
     """
     if not results:
@@ -66,18 +72,12 @@ def get_quiz_summary_prompt(results: list[dict]) -> str:
         "Based on my performance on this quiz, here are the actual results:\n"
     ]
 
-    correct_count = sum(
-        1 for r in results if r.get("correct") is True and r.get("matched")
-    )
-    total_graded = sum(1 for r in results if r.get("matched"))
-    unknown_count = sum(1 for r in results if not r.get("matched"))
+    correct_count = sum(1 for r in results if r.correct is True and r.matched)
+    total_graded = sum(1 for r in results if r.matched)
+    unknown_count = sum(1 for r in results if not r.matched)
 
-    summary_lines.append(
-        f"Topic: {results[0].get('topic', 'N/A')}\n"
-    )
-    summary_lines.append(
-        f"Answered: {len(results)} questions\n"
-    )
+    summary_lines.append(f"Topic: {results[0].topic}\n")
+    summary_lines.append(f"Answered: {len(results)} questions\n")
     summary_lines.append(
         f"Correct: {correct_count} out of {total_graded} graded questions\n"
     )
@@ -85,24 +85,18 @@ def get_quiz_summary_prompt(results: list[dict]) -> str:
         summary_lines.append(f"Unable to verify: {unknown_count} answer(s)\n")
     summary_lines.append("\nDetailed breakdown:\n")
 
-    for i, result in enumerate(results, 1):
-        question = result.get("question", "")
-        matched = result.get("matched", False)
-        correct = result.get("correct")
-        user_answer = result.get("user_answer", "")
-        correct_text = result.get("correct_text", "")
-
-        if not matched:
+    for result in results:
+        if not result.matched:
             status = "❓ (unverified answer)"
-        elif correct:
+        elif result.correct:
             status = "✓ (correct)"
         else:
             status = "✗ (incorrect)"
 
         summary_lines.append(
-            f"{i}. {question}\n"
-            f"   Your answer: {user_answer}\n"
-            f"   Correct answer: {correct_text}\n"
+            f"{result.question_number}. {result.question}\n"
+            f"   Your answer: {result.user_answer}\n"
+            f"   Correct answer: {result.correct_text}\n"
             f"   Result: {status}\n"
         )
 
@@ -112,7 +106,6 @@ def get_quiz_summary_prompt(results: list[dict]) -> str:
     )
 
     return "".join(summary_lines)
-
 
 
 def get_prompt_strategies():

@@ -18,6 +18,8 @@ from quiz_api import (
     grade_answer,
     FatalQuizApiError,
 )
+from quiz_result import QuizResult
+
 
 FORCED_TOOL_TEMPERATURE = 0.0
 
@@ -212,14 +214,17 @@ class QuizTutor:
                 if self.current_question_index < len(self.quiz_questions):
                     current_question = self.quiz_questions[self.current_question_index]
                     grade_result = grade_answer(current_question, user_input)
-                    self.quiz_results.append({
-                        "topic": self.quiz_topic,
-                        "question": current_question.get("text", ""),
-                        "matched": grade_result.get("matched", False),
-                        "correct": grade_result.get("correct"),
-                        "user_answer": grade_result.get("selected_text", ""),
-                        "correct_text": grade_result.get("correct_text", ""),
-                    })
+                    self.quiz_results.append(
+                        QuizResult(
+                            question_number=self.current_question_index + 1,
+                            topic=self.quiz_topic,
+                            question=current_question.get("text", ""),
+                            matched=grade_result.get("matched", False),
+                            correct=grade_result.get("correct"),
+                            user_answer=grade_result.get("selected_text", ""),
+                            correct_text=grade_result.get("correct_text", ""),
+                        )
+                    )
                     self.current_question_index += 1
 
                 response = self.chat(user_input)
