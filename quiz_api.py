@@ -1,6 +1,7 @@
 """Quiz API client for fetching real quiz content from quizapi.io."""
 
 import os
+import re
 import time
 import random
 import httpx
@@ -125,6 +126,7 @@ def get_quiz(quiz_id: int | str) -> dict:
     """
     GET /quizzes/{id}
     Fetch full quiz detail including questions array.
+    Injects a 'label' field ('A', 'B', 'C', ...) into each answer for programmatic grading.
     Returns {"status": "ok", "data": {...}} or {"status": "no_results", ...}
     """
     resp = _get(f"/quizzes/{quiz_id}")
@@ -137,7 +139,11 @@ def get_quiz(quiz_id: int | str) -> dict:
 
     data = resp.json()
     if data.get("success") and data.get("data"):
-        return {"status": "ok", "data": data["data"]}
+        quiz = data["data"]
+        for question in quiz.get("questions", []):
+            for i, answer in enumerate(question.get("answers", [])):
+                answer["label"] = chr(65 + i)
+        return {"status": "ok", "data": quiz}
 
     return {
         "status": "no_results",
@@ -195,6 +201,67 @@ GET_QUIZ_TOOL = {
 }
 
 TOOLS = [LIST_TOPICS_TOOL, LIST_QUIZZES_TOOL, GET_QUIZ_TOOL]
+
+
+def grade_answer(question: dict, user_input: str) -> dict:
+    """
+    Match user_input to one of question['answers'] and grade it against
+    the API's isCorrect flag. Never infers correctness from language — only
+    uses the label field (A, B, C, ...) or exact answer text matching.
+
+    Returns:
+        {
+            "matched": bool,  # True if an answer was confidently matched
+            "correct": bool | None,  # True/False if matched, None if unmatched
+            "selected_text": str,  # The user's input (as given)
+            "correct_text": str,  # Text of the correct answer (first one if multiple)
+        }
+    """
+    user_input_stripped = user_input.strip()
+
+    # Try letter match first (A, B, C, ...)
+    letter_match = re.match(r"^\s*([a-zA-Z])\b", user_input_stripped)
+    if letter_match:
+        letter = letter_match.group(1).upper()
+        for answer in question.get("answers", []):
+            if answer.get("label", "").upper() == letter:
+                correct_answer = next(
+                    (a for a in question.get("answers", []) if a.get("isCorrect")),
+                    question.get("answers", [{}])[0],
+                )
+                return {
+                    "matched": True,
+                    "correct": answer.get("isCorrect", False),
+                    "selected_text": answer.get("text", ""),
+                    "correct_text": correct_answer.get("text", ""),
+                }
+
+    # Fall back to exact text match (case-insensitive)
+    user_input_lower = user_input_stripped.lower()
+    for answer in question.get("answers", []):
+        if answer.get("text", "").lower() == user_input_lower:
+            correct_answer = next(
+                (a for a in question.get("answers", []) if a.get("isCorrect")),
+                question.get("answers", [{}])[0],
+            )
+            return {
+                "matched": True,
+                "correct": answer.get("isCorrect", False),
+                "selected_text": answer.get("text", ""),
+                "correct_text": correct_answer.get("text", ""),
+            }
+
+    # No match — return unmatched with the correct answer text for reference
+    correct_answer = next(
+        (a for a in question.get("answers", []) if a.get("isCorrect")),
+        question.get("answers", [{}])[0],
+    )
+    return {
+        "matched": False,
+        "correct": None,
+        "selected_text": user_input_stripped,
+        "correct_text": correct_answer.get("text", ""),
+    }
 
 
 def execute_tool(name: str, tool_input: dict) -> dict:

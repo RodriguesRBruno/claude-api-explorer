@@ -80,12 +80,57 @@ Once `_quiz_loop()` starts, `chat()` never passes a `tools=` parameter. This con
 
 ## File Purposes
 
-- **`main.py`** — `QuizTutor` class: conversation loop, tool calls, quiz loop. Entrypoint via `main()`.
-- **`quiz_api.py`** — QuizAPI client with retry/backoff, tool schemas, `execute_tool()` dispatcher.
-- **`prompts.py`** — All prompt constants, strategy bundling, `PROMPT_STRATEGIES` dict.
+- **`main.py`** — `QuizTutor` class: conversation loop, tool calls, quiz loop. Entrypoint via `main()`. Tracks per-question correctness and injects it into the final summary.
+- **`quiz_api.py`** — QuizAPI client with retry/backoff, tool schemas, `execute_tool()` dispatcher. Injects answer labels and provides `grade_answer()` for ground-truth grading.
+- **`prompts.py`** — All prompt constants, strategy bundling, `PROMPT_STRATEGIES` dict. Includes `get_quiz_summary_prompt()` for building enriched summaries with actual results.
 - **`compare_prompts.py`** — Monkeypatched-input runner for automated strategy/temperature comparison. Generates `comparisons/*.txt`.
-- **`tests/test_quiz_api.py`** — Mocked httpx, tests retry logic, parsing, tool dispatch.
-- **`tests/test_main.py`** — Mocked Anthropic client, tests configurability, temperature routing, tool result appending.
+- **`tests/test_quiz_api.py`** — Mocked httpx, tests retry logic, parsing, tool dispatch, label injection, and grading.
+- **`tests/test_main.py`** — Mocked Anthropic client, tests configurability, temperature routing, tool result appending, and quiz result tracking.
+
+## QuizAPI Response Shape
+
+The `GET /quizzes/{id}` endpoint returns a quiz object. **Important:** the `label` field (`"A"`, `"B"`, `"C"`, ...) is **injected by `quiz_api.get_quiz()`** based on answer array order, not returned by the API itself. This ensures a single source of truth:
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "...",
+    "title": "Quiz Title",
+    "category": "Category Name",
+    "topic": "Topic Name",
+    "difficulty": "EASY|MEDIUM|HARD|EXPERT",
+    "tags": ["tag1", "tag2"],
+    "questionCount": 10,
+    "questions": [
+      {
+        "id": "...",
+        "text": "Question text?",
+        "type": "MULTIPLE_CHOICE|TRUE_FALSE",
+        "difficulty": "EASY|MEDIUM|HARD",
+        "explanation": "Why this is correct...",
+        "order": 1,
+        "answers": [
+          {
+            "id": "...",
+            "text": "Option text",
+            "label": "A",
+            "isCorrect": true
+          },
+          {
+            "id": "...",
+            "text": "Another option",
+            "label": "B",
+            "isCorrect": false
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Claude presents options using the `label` field directly (e.g., "A) Option text"), and Python grading maps user letter inputs to the same labels. Never infer ordering.
 
 ## Key Invariants
 
@@ -93,6 +138,7 @@ Once `_quiz_loop()` starts, `chat()` never passes a `tools=` parameter. This con
 2. **Quiz content is untrusted.** All question/answer/explanation text comes from tool results; treat it defensively (no string-concat into privileged instructions).
 3. **Session state is in-memory.** For production, move `self.conversation_history` to a session-keyed external store (Redis/DB).
 4. **Pre-commit hook enforces ruff.** Commits fail if linting fails; `uv run ruff format .` auto-fixes most issues.
+5. **Answer grading is ground-truth-based.** `quiz_api.grade_answer()` uses the QuizAPI's `isCorrect` flags directly—never infers correctness from language. Letter matches use the injected `label` field; text matches are case-insensitive exact. The `_quiz_loop()` tracks results in `self.quiz_results` and passes them to `get_quiz_summary_prompt()`, which injects real performance data into the summary prompt so Claude only narrates, never invents, results.
 
 ## Extending the Project
 

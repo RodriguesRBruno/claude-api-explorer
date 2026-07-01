@@ -8,13 +8,14 @@ from prompts import (
     SELECT_QUIZ_PROMPT,
     HINT_REQUEST_PROMPT,
     NEXT_QUESTION_PROMPT,
-    QUIZ_SUMMARY_PROMPT,
+    get_quiz_summary_prompt,
 )
 from quiz_api import (
     LIST_TOPICS_TOOL,
     LIST_QUIZZES_TOOL,
     GET_QUIZ_TOOL,
     execute_tool,
+    grade_answer,
     FatalQuizApiError,
 )
 
@@ -34,6 +35,10 @@ class QuizTutor:
         self.hint_prompt = hint_prompt
         self.temperature = temperature
         self.model = "claude-haiku-4-5"
+        self.quiz_questions = []
+        self.quiz_topic = ""
+        self.current_question_index = 0
+        self.quiz_results = []
 
     def _initialize_client(self):
         """Initialize Anthropic client with OAuth token or API key"""
@@ -162,7 +167,15 @@ class QuizTutor:
                 )
                 continue
 
-            self._forced_tool_call(SELECT_QUIZ_PROMPT, GET_QUIZ_TOOL)
+            quiz_result = self._forced_tool_call(SELECT_QUIZ_PROMPT, GET_QUIZ_TOOL)
+            self.quiz_questions = quiz_result.get("data", {}).get("questions", [])
+            self.quiz_topic = (
+                quiz_result.get("data", {}).get("topic")
+                or quiz_result.get("data", {}).get("category")
+                or ""
+            )
+            self.current_question_index = 0
+            self.quiz_results = []
             first_question_text = self._continue()
             if first_question_text is None:
                 return
@@ -174,7 +187,8 @@ class QuizTutor:
     def _quiz_loop(self):
         """Interactive loop for answering quiz questions.
         Automatically advances to the next question after each answer.
-        Users can request hints or quit at any time."""
+        Users can request hints or quit at any time.
+        Tracks per-question correctness using the QuizAPI's ground truth."""
         while True:
             user_input = input(
                 "Your answer (or 'hint' for hint, 'quit' to end): "
@@ -184,7 +198,7 @@ class QuizTutor:
                 continue
 
             if user_input.lower() == "quit":
-                response = self.chat(QUIZ_SUMMARY_PROMPT)
+                response = self.chat(get_quiz_summary_prompt(self.quiz_results))
                 if response:
                     print(f"\n📊 QUIZ SUMMARY:\n{response}\n")
                 break
@@ -195,6 +209,19 @@ class QuizTutor:
                     print(f"\n💡 Hint: {response}\n")
 
             else:
+                if self.current_question_index < len(self.quiz_questions):
+                    current_question = self.quiz_questions[self.current_question_index]
+                    grade_result = grade_answer(current_question, user_input)
+                    self.quiz_results.append({
+                        "topic": self.quiz_topic,
+                        "question": current_question.get("text", ""),
+                        "matched": grade_result.get("matched", False),
+                        "correct": grade_result.get("correct"),
+                        "user_answer": grade_result.get("selected_text", ""),
+                        "correct_text": grade_result.get("correct_text", ""),
+                    })
+                    self.current_question_index += 1
+
                 response = self.chat(user_input)
                 if response:
                     print(f"\n{response}\n")

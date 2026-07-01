@@ -34,7 +34,9 @@ def get_list_quizzes_prompt(topic: str, difficulty: str) -> str:
 
 SELECT_QUIZ_PROMPT = (
     "From the quizzes above, pick one (you choose which) and fetch its full details. "
-    "Then begin by asking the user the first question."
+    "Then begin by asking the user the first question. "
+    "When presenting multiple-choice options, use the 'label' field from the tool data "
+    "(e.g., label 'A' for the first option, 'B' for the second, etc.)."
 )
 
 CONCISE_HINT_PROMPT = "Give a one-sentence hint. No elaboration."
@@ -49,6 +51,68 @@ QUIZ_SUMMARY_PROMPT = (
     "Please provide a brief summary of my performance on this quiz, "
     "including strengths and areas for improvement."
 )
+
+
+def get_quiz_summary_prompt(results: list[dict]) -> str:
+    """
+    Build an enriched summary prompt using actual per-question results
+    (topic, question text, correct/incorrect/unknown, user's answer, correct answer).
+    Falls back to QUIZ_SUMMARY_PROMPT if results is empty.
+    """
+    if not results:
+        return QUIZ_SUMMARY_PROMPT
+
+    summary_lines = [
+        "Based on my performance on this quiz, here are the actual results:\n"
+    ]
+
+    correct_count = sum(
+        1 for r in results if r.get("correct") is True and r.get("matched")
+    )
+    total_graded = sum(1 for r in results if r.get("matched"))
+    unknown_count = sum(1 for r in results if not r.get("matched"))
+
+    summary_lines.append(
+        f"Topic: {results[0].get('topic', 'N/A')}\n"
+    )
+    summary_lines.append(
+        f"Answered: {len(results)} questions\n"
+    )
+    summary_lines.append(
+        f"Correct: {correct_count} out of {total_graded} graded questions\n"
+    )
+    if unknown_count > 0:
+        summary_lines.append(f"Unable to verify: {unknown_count} answer(s)\n")
+    summary_lines.append("\nDetailed breakdown:\n")
+
+    for i, result in enumerate(results, 1):
+        question = result.get("question", "")
+        matched = result.get("matched", False)
+        correct = result.get("correct")
+        user_answer = result.get("user_answer", "")
+        correct_text = result.get("correct_text", "")
+
+        if not matched:
+            status = "❓ (unverified answer)"
+        elif correct:
+            status = "✓ (correct)"
+        else:
+            status = "✗ (incorrect)"
+
+        summary_lines.append(
+            f"{i}. {question}\n"
+            f"   Your answer: {user_answer}\n"
+            f"   Correct answer: {correct_text}\n"
+            f"   Result: {status}\n"
+        )
+
+    summary_lines.append(
+        "\nPlease provide a brief summary of my performance, "
+        "highlighting what I got right, what I got wrong, and areas for improvement."
+    )
+
+    return "".join(summary_lines)
+
 
 
 def get_prompt_strategies():

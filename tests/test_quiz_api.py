@@ -10,6 +10,7 @@ from quiz_api import (
     get_quiz,
     list_quizzes,
     list_topics,
+    grade_answer,
 )
 
 
@@ -209,3 +210,126 @@ class TestExecuteTool:
         result = execute_tool("nonexistent_tool", {})
         assert result["status"] == "no_results"
         assert "Unknown tool" in result["message"]
+
+
+class TestGetQuizLabelInjection:
+    """Test that get_quiz injects 'label' field into answers."""
+
+    @mock.patch("quiz_api._get")
+    def test_labels_injected(self, mock_get):
+        """get_quiz should inject A, B, C, ... labels based on answer order."""
+        mock_resp = mock.MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "success": True,
+            "data": {
+                "id": "123",
+                "title": "Test Quiz",
+                "questions": [
+                    {
+                        "id": "q1",
+                        "text": "Which is correct?",
+                        "answers": [
+                            {"id": "a1", "text": "First", "isCorrect": True},
+                            {"id": "a2", "text": "Second", "isCorrect": False},
+                            {"id": "a3", "text": "Third", "isCorrect": False},
+                        ],
+                    }
+                ],
+            },
+        }
+        mock_get.return_value = mock_resp
+        result = get_quiz("123")
+        assert result["status"] == "ok"
+        question = result["data"]["questions"][0]
+        assert len(question["answers"]) == 3
+        assert question["answers"][0]["label"] == "A"
+        assert question["answers"][1]["label"] == "B"
+        assert question["answers"][2]["label"] == "C"
+
+
+class TestGradeAnswer:
+    """Test grade_answer function."""
+
+    def _make_question(self, answers_data):
+        """Helper to create a question dict with answers."""
+        answers = []
+        for i, (text, is_correct) in enumerate(answers_data):
+            answers.append(
+                {
+                    "id": f"a{i}",
+                    "text": text,
+                    "label": chr(65 + i),
+                    "isCorrect": is_correct,
+                }
+            )
+        return {
+            "id": "q1",
+            "text": "Test question?",
+            "answers": answers,
+        }
+
+    def test_letter_match_correct(self):
+        """Letter match should find the answer by label and grade correctly."""
+        question = self._make_question([("Eight", True), ("Nine", False)])
+        result = grade_answer(question, "A")
+        assert result["matched"] is True
+        assert result["correct"] is True
+        assert result["selected_text"] == "Eight"
+        assert result["correct_text"] == "Eight"
+
+    def test_letter_match_incorrect(self):
+        """Letter match should grade as incorrect if the letter's answer is wrong."""
+        question = self._make_question([("Eight", True), ("Nine", False)])
+        result = grade_answer(question, "B")
+        assert result["matched"] is True
+        assert result["correct"] is False
+        assert result["selected_text"] == "Nine"
+        assert result["correct_text"] == "Eight"
+
+    def test_letter_match_case_insensitive(self):
+        """Letter match should be case-insensitive."""
+        question = self._make_question([("Eight", True), ("Nine", False)])
+        result = grade_answer(question, "b")
+        assert result["matched"] is True
+        assert result["correct"] is False
+
+    def test_letter_match_with_whitespace(self):
+        """Letter match should handle leading/trailing whitespace."""
+        question = self._make_question([("Eight", True), ("Nine", False)])
+        result = grade_answer(question, "  A  ")
+        assert result["matched"] is True
+        assert result["correct"] is True
+
+    def test_text_match_correct(self):
+        """Text match should find exact answer text (case-insensitive)."""
+        question = self._make_question([("Eight", True), ("Nine", False)])
+        result = grade_answer(question, "eight")
+        assert result["matched"] is True
+        assert result["correct"] is True
+        assert result["selected_text"] == "Eight"
+
+    def test_text_match_incorrect(self):
+        """Text match should grade as incorrect if the text's answer is wrong."""
+        question = self._make_question([("Eight", True), ("Nine", False)])
+        result = grade_answer(question, "nine")
+        assert result["matched"] is True
+        assert result["correct"] is False
+        assert result["correct_text"] == "Eight"
+
+    def test_no_match(self):
+        """Unmatched input should return matched=False."""
+        question = self._make_question([("Eight", True), ("Nine", False)])
+        result = grade_answer(question, "garbage input")
+        assert result["matched"] is False
+        assert result["correct"] is None
+        assert result["selected_text"] == "garbage input"
+        assert result["correct_text"] == "Eight"
+
+    def test_letter_takes_precedence_over_text(self):
+        """If input starts with a letter, don't try text matching."""
+        question = self._make_question([("Eight", False), ("Nine", True)])
+        result = grade_answer(question, "A something else")
+        assert result["matched"] is True
+        assert result["correct"] is False
+        assert result["selected_text"] == "Eight"

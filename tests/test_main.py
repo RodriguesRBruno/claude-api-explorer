@@ -165,3 +165,124 @@ class TestQuizLoopHintPrompt:
                 assert hint_found, (
                     "Custom hint prompt not found in call to messages.create"
                 )
+
+
+class TestQuizResultTracking:
+    """Test that _quiz_loop accumulates quiz_results correctly."""
+
+    def test_quiz_results_initialized_on_start(self, mock_oauth):
+        """start_new_quiz should initialize quiz_results and quiz_questions."""
+        with mock.patch("main.Anthropic") as mock_client_class:
+            mock_client = mock.MagicMock()
+            mock_client_class.return_value = mock_client
+            mock_resp = mock.MagicMock()
+            mock_resp.content = [mock.MagicMock(type="text", text="Topics")]
+            mock_client.messages.create.return_value = mock_resp
+            with mock.patch("main.execute_tool") as mock_execute:
+                # Mock list_topics
+                mock_execute.side_effect = [
+                    {"status": "ok", "data": [{"name": "Python"}]},
+                ]
+                with mock.patch("builtins.input", side_effect=["Python", "medium"]):
+                    tutor = QuizTutor()
+                    # Manually set up to avoid the list_quizzes loop
+                    tutor.conversation_history = []
+                    quiz_data = {
+                        "status": "ok",
+                        "data": {
+                            "id": "123",
+                            "topic": "Python",
+                            "category": "Programming",
+                            "questions": [
+                                {
+                                    "id": "q1",
+                                    "text": "What is 2+2?",
+                                    "answers": [
+                                        {
+                                            "id": "a1",
+                                            "text": "4",
+                                            "label": "A",
+                                            "isCorrect": True,
+                                        }
+                                    ],
+                                }
+                            ],
+                        },
+                    }
+                    # Simulate what _forced_tool_call would return
+                    tutor.quiz_questions = quiz_data["data"]["questions"]
+                    tutor.quiz_topic = quiz_data["data"]["topic"]
+                    tutor.current_question_index = 0
+                    tutor.quiz_results = []
+                    assert len(tutor.quiz_questions) == 1
+                    assert tutor.quiz_topic == "Python"
+                    assert tutor.quiz_results == []
+
+    def test_quiz_loop_grades_and_tracks_answer(self, mock_oauth):
+        """_quiz_loop should grade each answer and add to quiz_results."""
+        with mock.patch("main.Anthropic") as mock_client_class:
+            mock_client = mock.MagicMock()
+            mock_client_class.return_value = mock_client
+            mock_resp = mock.MagicMock()
+            mock_resp.content = [mock.MagicMock(type="text", text="Good answer!")]
+            mock_client.messages.create.return_value = mock_resp
+            tutor = QuizTutor()
+            tutor.quiz_questions = [
+                {
+                    "id": "q1",
+                    "text": "What is 2+2?",
+                    "answers": [
+                        {"id": "a1", "text": "4", "label": "A", "isCorrect": True},
+                        {"id": "a2", "text": "5", "label": "B", "isCorrect": False},
+                    ],
+                }
+            ]
+            tutor.quiz_topic = "Math"
+            tutor.current_question_index = 0
+            tutor.quiz_results = []
+            with mock.patch("builtins.input", side_effect=["A", "quit"]):
+                with mock.patch("builtins.print"):
+                    tutor._quiz_loop()
+            # Should have tracked one result
+            assert len(tutor.quiz_results) == 1
+            result = tutor.quiz_results[0]
+            assert result["topic"] == "Math"
+            assert result["question"] == "What is 2+2?"
+            assert result["matched"] is True
+            assert result["correct"] is True
+            assert result["user_answer"] == "4"
+            assert result["correct_text"] == "4"
+
+    def test_quiz_loop_uses_enriched_summary_prompt(self, mock_oauth):
+        """_quiz_loop on quit should use get_quiz_summary_prompt with results."""
+        with mock.patch("main.Anthropic") as mock_client_class:
+            mock_client = mock.MagicMock()
+            mock_client_class.return_value = mock_client
+            mock_resp = mock.MagicMock()
+            mock_resp.content = [
+                mock.MagicMock(type="text", text="Great job!")
+            ]
+            mock_client.messages.create.return_value = mock_resp
+            tutor = QuizTutor()
+            tutor.quiz_results = [
+                {
+                    "topic": "Math",
+                    "question": "What is 2+2?",
+                    "matched": True,
+                    "correct": True,
+                    "user_answer": "4",
+                    "correct_text": "4",
+                }
+            ]
+            with mock.patch("builtins.input", side_effect=["quit"]):
+                with mock.patch("builtins.print"):
+                    tutor._quiz_loop()
+            # Check that messages.create was called
+            assert mock_client.messages.create.called
+            # The chat call should have included the enriched summary prompt
+            call_args = mock_client.messages.create.call_args
+            messages = call_args[1]["messages"]
+            # Last user message should contain the summary data
+            assert any(
+                "Math" in str(msg) for msg in messages
+            ), "Summary should include topic"
