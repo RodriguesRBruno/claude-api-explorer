@@ -172,10 +172,12 @@ class QuizTutor:
         self._quiz_loop()
 
     def _quiz_loop(self):
-        """Interactive loop for answering quiz questions"""
+        """Interactive loop for answering quiz questions.
+        Automatically advances to the next question after each answer.
+        Users can request hints or quit at any time."""
         while True:
             user_input = input(
-                "Your answer (or 'hint' for hint, 'next' to skip, 'quit' to end): "
+                "Your answer (or 'hint' for hint, 'quit' to end): "
             ).strip()
 
             if not user_input:
@@ -192,15 +194,13 @@ class QuizTutor:
                 if response:
                     print(f"\n💡 Hint: {response}\n")
 
-            elif user_input.lower() == "next":
-                response = self.chat(NEXT_QUESTION_PROMPT)
-                if response:
-                    print(f"\n{response}\n")
-
             else:
                 response = self.chat(user_input)
                 if response:
                     print(f"\n{response}\n")
+                next_q = self.chat(NEXT_QUESTION_PROMPT)
+                if next_q:
+                    print(f"{next_q}\n")
 
     def run(self):
         """Main application loop"""
