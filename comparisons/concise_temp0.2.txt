@@ -7,7 +7,7 @@
 
 Programming, JavaScript, TypeScript, Python, Go, Rust, Java, C++, PHP, Ruby, Swift, Kotlin, React, Node.js, GraphQL, REST API, Git, CSS, SQL, Algorithms, Design Patterns, Functional Programming, Testing, Web Performance, WebSocket, Regular Expressions, Data Structures, DevOps & Cloud, Docker, Kubernetes, Terraform, Ansible, AWS, GCP, Azure, CI/CD, GitHub Actions, Nginx, Serverless, Helm, Monitoring, Site Reliability, Cloud Cost, Database, PostgreSQL, MySQL, MongoDB, Redis, Elasticsearch, Database Design, SQL Queries, NoSQL, Data Modeling, Migrations, Cybersecurity, Web Security, Cryptography, Network Security, OWASP, Penetration Testing, Incident Response, Security Compliance, OAuth & Authentication, Malware Analysis, Cloud Security, Physics, Chemistry, Biology, Astronomy, Earth Science, Genetics, Ecology, Neuroscience, Quantum Physics, Climate Science, Marine Biology, Paleontology, World Wars, Ancient History, Medieval History, Modern History, American History, European History, Asian History, Ancient Rome, Ancient Greece, Cold War, Renaissance, Industrial Revolution, World Capitals, Africa, Europe, Asia, Americas, Mountains, Rivers, Oceans, Countries, Flags, Algebra, Geometry, Calculus, Statistics, Probability, Number Theory, Logic, Combinatorics, Linear Algebra, Discrete Math, Classic Literature, Shakespeare, Poetry, Modern Fiction, Science Fiction, Fantasy, World Literature, Literary Devices, Nobel Laureates, Children's Literature, Movies, TV Shows, Music, Video Games, Anime, Comics, Celebrities, Sports, Food & Drink, Fashion, Economics, Investing, Accounting, Marketing, Entrepreneurship, Cryptocurrency, Stock Market, Personal Finance, Management, Supply Chain, General Knowledge, Trivia, Fun Facts, World Records, Inventions, Famous People, Languages, Mythology, Philosophy, Art & Architecture, Health & Wellness.
 
-Which topic would you like to quiz on?
+Which topic would you like to start with?
 
 
 **Quiz: Python Basics & Syntax**
@@ -21,35 +21,31 @@ y = 20
 print(x + y)
 ```
 
-A) Prints 30  
-B) Prints 10 20  
-C) Raises an IndentationError  
+A) Prints 30
+B) Prints 10 20
+C) Raises an IndentationError
 D) Raises a SyntaxError about the variable name
 
-What's your answer?
+Your answer?
 
 
-💡 Hint: The code structure and indentation matter in Python.
+💡 Hint: Think about what Python does with spaces at the beginning of lines.
 
 
-Incorrect. The code has an unexpected indent on `y = 20` that causes an IndentationError.
+Incorrect. The code runs without error and prints 30; indentation only matters when it's unexpected within a block.
 
 **Question 2 of 9:**
 
 Which of the following is a valid way to write a multi-line comment in Python?
 
-A) `/* This is a comment */`  
-B) `# This is a comment`  
-C) `// This is a comment`  
-D) A triple-quoted string: `"""This is a comment"""`
+A) /* This is a comment */
+B) # This is a comment
+C) // This is a comment
+D) A triple-quoted string: """This is a comment"""
 
-What's your answer?
+Your answer?
 
-
-💡 Hint: Python doesn't use C-style or JavaScript-style comment syntax.
-
-
-Incorrect. While `#` works for single lines, the valid multi-line comment convention is a triple-quoted string.
+Skipping to next question.
 
 **Question 3 of 9:**
 
@@ -59,37 +55,30 @@ name = 'Alice'
 print('Hello,', name, end='!\n')
 ```
 
-A) Hello, Alice!  
-B) Hello,Alice!  
-C) Hello, Alice!\n  
+A) Hello, Alice!
+B) Hello,Alice!
+C) Hello, Alice!\n
 D) Hello, Alice !
 
-What's your answer?
+Your answer?
 
 
-💡 Hint: The `end` parameter replaces the default newline, and `print()` separates arguments with spaces.
+💡 Hint: The `end` parameter replaces the default newline, and `print()` separates arguments with spaces by default.
 
 
 <thinking>
-The user answered "A) Hello, Alice!"
+The user answered B) Hello,Alice!
 
-Let me check the explanation: "The `print()` function separates arguments with a space by default, and the `end` parameter replaces the default newline. So it prints 'Hello, Alice' followed by '!' and then a newline."
+Let me check the correct answer from the quiz data. Looking at question 3:
+- The correct answer is A) Hello, Alice!
+- The explanation says: "The `print()` function separates arguments with a space by default, and the `end` parameter replaces the default newline. So it prints 'Hello, Alice' followed by '!' and then a newline."
 
-So the output is:
-- 'Hello,' (first argument)
-- space (default separator)
-- 'Alice' (second argument)
-- '!' (the end parameter)
-- newline (from '\n' in the end parameter)
+So the user's answer B is incorrect. The correct answer is A because print() adds a space between arguments by default, so it's "Hello, Alice!" not "Hello,Alice!"
 
-So it prints: "Hello, Alice!"
-
-The answer A is "Hello, Alice!" which is correct.
-
-According to my instructions: "State whether the answer is correct or incorrect, give a one-sentence reason, and move on."
+I need to state it's incorrect, give a one-sentence reason, and move on.
 </thinking>
 
-Correct. The `print()` function adds spaces between arguments and the `end` parameter replaces the default newline with `!\n`.
+Incorrect. The `print()` function adds a space between arguments by default, so it prints "Hello, Alice!" not "Hello,Alice!".
 
 **Question 4 of 9:**
 
@@ -101,29 +90,107 @@ x = 10
 z = y
 ```
 
-A) 5  
-B) 10  
-C) 15  
+A) 5
+B) 10
+C) 15
 D) Raises a NameError
 
-What's your answer?
+Your answer?
 
-
-💡 Hint: Integers are immutable, so changing `x` doesn't affect `y`.
-
-
-Incorrect. When `y = x` executes, `y` gets the value 5; reassigning `x = 10` doesn't change `y`, so `z = y` assigns 5 to `z`.
+Skipping to next question.
 
 **Question 5 of 9:**
 
 Which statement correctly assigns three variables in a single line in Python?
 
-A) `int a = 1, b = 2, c = 3`  
-B) `a, b, c = 1, 2, 3`  
-C) `a = 1 & b = 2 & c = 3`  
-D) `let a, b, c = 1, 2, 3`
+A) int a = 1, b = 2, c = 3
+B) a, b, c = 1, 2, 3
+C) a = 1 & b = 2 & c = 3
+D) let a, b, c = 1, 2, 3
 
-What's your answer?
+Your answer?
+
+
+💡 Hint: Python allows tuple unpacking on both sides of the assignment operator.
+
+
+Incorrect. Option A uses C-style syntax with type declarations; Python's syntax is `a, b, c = 1, 2, 3`.
+
+**Question 6 of 9:**
+
+What does the following expression evaluate to?
+```python
+bool('') + bool(0) + bool([]) + bool({1: 2})
+```
+
+A) 0
+B) 3
+C) 4
+D) 1
+
+Your answer?
+
+Skipping to next question.
+
+**Question 7 of 9:**
+
+What is the output of this code?
+```python
+x = None
+print(type(x).__name__)
+```
+
+A) None
+B) NoneType
+C) null
+D) void
+
+Your answer?
+
+
+💡 Hint: The `__name__` attribute of a type returns its string name.
+
+
+<thinking>
+The user answered B) NoneType
+
+Looking at question 7 from the quiz data:
+- The correct answer is B) NoneType
+- The explanation says: "`None` is an instance of the `NoneType` class. The `__name__` attribute of a type returns its name as a string, so `type(None).__name__` is `'NoneType'`."
+
+So the user's answer is correct!
+
+I need to state it's correct, give a one-sentence reason, and move on.
+</thinking>
+
+Correct. `type(None).__name__` returns the string 'NoneType'.
+
+**Question 8 of 9:**
+
+Which expression correctly converts the string `'42.5'` to an integer `42` in Python?
+
+A) int('42.5')
+B) int(float('42.5'))
+C) integer('42.5')
+D) cast(int, '42.5')
+
+Your answer?
+
+Skipping to next question.
+
+**Question 9 of 9:**
+
+What does this code print?
+```python
+print(isinstance(True, int))
+```
+
+A) True
+B) False
+C) Raises a TypeError
+D) 1
+
+Your answer?
 
 
 📊 QUIZ SUMMARY:
@@ -131,7 +198,12 @@ What's your answer?
 
 **Score: 1/4 (25%)**
 
-**Strengths:** You correctly identified how `print()` handles arguments and the `end` parameter.
+**What you got right:**
+Question 3 on print() output — you correctly understood how the `end` parameter and spacing work.
 
-**Areas for Improvement:** You need to review Python's indentation rules, multi-line comment syntax, and variable assignment behavior with immutable types.
+**What you got wrong:**
+Questions 1, 2, and 4 — you misunderstood Python indentation rules, multi-line comment syntax, and variable assignment/immutability.
+
+**Areas to improve:**
+Focus on Python's indentation requirements, the difference between docstrings and comments, and how variable reassignment works with immutable types like integers.
 
