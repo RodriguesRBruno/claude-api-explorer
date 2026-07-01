@@ -145,66 +145,56 @@ def get_quiz(quiz_id: int | str) -> dict:
     }
 
 
-TOOLS = [
-    {
-        "name": "list_topics",
-        "description": (
-            "List the quiz topics/categories currently available from the quiz "
-            "service. Call this first, before asking the user to choose a topic, "
-            "so the topic list you present is grounded in real data."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {},
-            "required": [],
-        },
+LIST_TOPICS_TOOL = {
+    "name": "list_topics",
+    "description": "List the quiz topics/categories currently available.",
+    "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": [],
     },
-    {
-        "name": "list_quizzes",
-        "description": (
-            "List available quizzes filtered by topic/category and difficulty. "
-            "Call this after the user has chosen a topic and difficulty level. "
-            "If the result is empty, tell the user there are no quizzes for that "
-            "combination and ask them to pick again from the topic list — do not "
-            "invent quiz questions yourself in that case."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "category": {
-                    "type": "string",
-                    "description": "Topic/category name to filter by, as chosen by the user.",
-                },
-                "difficulty": {
-                    "type": "string",
-                    "enum": ["EASY", "MEDIUM", "HARD", "EXPERT"],
-                    "description": "Difficulty level to filter by.",
-                },
+}
+
+LIST_QUIZZES_TOOL = {
+    "name": "list_quizzes",
+    "description": (
+        "List available quizzes filtered by topic/category and difficulty."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "category": {
+                "type": "string",
+                "description": "Topic/category name to filter by.",
             },
-            "required": ["category", "difficulty"],
-        },
-    },
-    {
-        "name": "get_quiz",
-        "description": (
-            "Fetch full detail for a single quiz by its ID, including its real "
-            "questions, answer options, correct answers, and explanations. Call "
-            "this after choosing one quiz from list_quizzes results, so you can "
-            "quiz the user using real fetched questions rather than generating "
-            "your own."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "quiz_id": {
-                    "type": ["string", "integer"],
-                    "description": "The id of the quiz to fetch, taken from a list_quizzes result.",
-                },
+            "difficulty": {
+                "type": "string",
+                "enum": ["EASY", "MEDIUM", "HARD", "EXPERT"],
+                "description": "Difficulty level to filter by.",
             },
-            "required": ["quiz_id"],
         },
+        "required": ["category", "difficulty"],
     },
-]
+}
+
+GET_QUIZ_TOOL = {
+    "name": "get_quiz",
+    "description": (
+        "Fetch full detail for a quiz by ID, including questions, answers, and explanations."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "quiz_id": {
+                "type": ["string", "integer"],
+                "description": "The id of the quiz to fetch.",
+            },
+        },
+        "required": ["quiz_id"],
+    },
+}
+
+TOOLS = [LIST_TOPICS_TOOL, LIST_QUIZZES_TOOL, GET_QUIZ_TOOL]
 
 
 def execute_tool(name: str, tool_input: dict) -> dict:

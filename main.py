@@ -3,13 +3,20 @@ import json
 from anthropic import Anthropic, RateLimitError, APIError
 from prompts import (
     QUIZ_TUTOR_SYSTEM_PROMPT,
-    get_quiz_start_prompt,
+    get_list_quizzes_prompt,
+    TOPIC_LIST_REQUEST_PROMPT,
+    SELECT_QUIZ_PROMPT,
     HINT_REQUEST_PROMPT,
     NEXT_QUESTION_PROMPT,
     QUIZ_SUMMARY_PROMPT,
-    TOPIC_LIST_REQUEST_PROMPT,
 )
-from quiz_api import TOOLS, execute_tool, FatalQuizApiError
+from quiz_api import (
+    LIST_TOPICS_TOOL,
+    LIST_QUIZZES_TOOL,
+    GET_QUIZ_TOOL,
+    execute_tool,
+    FatalQuizApiError,
+)
 
 
 class QuizTutor:
@@ -37,57 +44,20 @@ class QuizTutor:
                 "  - ANTHROPIC_API_KEY in .env file or environment"
             )
 
-    def chat(self, user_message):
-        """Send a message and get a response, maintaining conversation history.
-        Handles tool-use loops internally: may make multiple round-trips to the
-        API (list_topics → list_quizzes → get_quiz, etc.) within a single call."""
-        self.conversation_history.append({"role": "user", "content": user_message})
-        self._last_tool_statuses = []
-
+    def _continue(self):
+        """Get the next assistant turn from existing history (no new user message).
+        Used right after appending a tool_result, or by chat()."""
         try:
-            while True:
-                response = self.client.messages.create(
-                    model=self.model,
-                    max_tokens=1024,
-                    system=self.system_prompt,
-                    messages=self.conversation_history,
-                    tools=TOOLS,  # type: ignore
-                )
-
-                # Append the raw content blocks (not .text) — required so tool_use
-                # blocks round-trip correctly into the next request's history.
-                self.conversation_history.append(
-                    {"role": "assistant", "content": response.content}
-                )
-
-                if response.stop_reason != "tool_use":
-                    break
-
-                # Handle possibly-multiple tool_use blocks in this response.
-                tool_results = []
-                for block in [b for b in response.content if b.type == "tool_use"]:
-                    result = execute_tool(block.name, block.input)
-                    self._last_tool_statuses.append(result.get("status"))
-                    tool_results.append(
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": json.dumps(result),
-                        }
-                    )
-
-                # All tool_result blocks for this turn go in ONE user message,
-                # per the API contract for parallel tool use.
-                self.conversation_history.append(
-                    {"role": "user", "content": tool_results}
-                )
-
-            # stop_reason is now "end_turn" or similar — extract final text
-            assistant_text = next(
-                (b.text for b in response.content if b.type == "text"), ""
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=1024,
+                system=self.system_prompt,
+                messages=self.conversation_history,
             )
-            return assistant_text
-
+            self.conversation_history.append(
+                {"role": "assistant", "content": response.content}
+            )
+            return next((b.text for b in response.content if b.type == "text"), "")
         except RateLimitError as e:
             print(str(e))
             print("\n⚠️  Rate limit reached. Please wait a moment before trying again.")
@@ -95,23 +65,67 @@ class QuizTutor:
         except APIError as e:
             print(f"\n❌ API Error: {e}")
             return None
-        # FatalQuizApiError intentionally NOT caught — propagates to main()
+
+    def chat(self, user_message):
+        """Plain conversational turn — no tools available.
+        Used by hint/next/quit/answer loops."""
+        self.conversation_history.append({"role": "user", "content": user_message})
+        return self._continue()
+
+    def _forced_tool_call(self, user_message, tool_schema):
+        """Send user_message, forcing Claude to call exactly tool_schema['name'].
+        Executes the tool, appends the tool_result, and returns the result dict.
+        FatalQuizApiError (auth/retry-exhausted) propagates uncaught."""
+        self.conversation_history.append({"role": "user", "content": user_message})
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=1024,
+            system=self.system_prompt,
+            messages=self.conversation_history,
+            tools=[tool_schema],
+            tool_choice={"type": "tool", "name": tool_schema["name"]},  # type: ignore
+        )
+        self.conversation_history.append(
+            {"role": "assistant", "content": response.content}
+        )
+        tool_use_block = next(b for b in response.content if b.type == "tool_use")
+        result = execute_tool(tool_use_block.name, tool_use_block.input)
+        self.conversation_history.append(
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tool_use_block.id,
+                        "content": json.dumps(result),
+                    }
+                ],
+            }
+        )
+        return result
 
     def start_new_quiz(self):
-        """Start a new quiz session"""
+        """Start a new quiz session with hardcoded tool-use workflow:
+        1. Force list_topics call
+        2. Present topics
+        3. Get user topic/difficulty
+        4. Force list_quizzes call
+        5. If no results, loop back to step 3
+        6. Force get_quiz call (Claude picks a quiz)
+        7. Present first question
+        8. Enter hint/next/answer loop"""
         self.conversation_history = []
 
         print("\n" + "=" * 50)
         print("📚 NEW QUIZ SESSION")
         print("=" * 50)
 
-        # First: show available topics via list_topics tool
-        response = self.chat(TOPIC_LIST_REQUEST_PROMPT)
-        if response is None:
+        self._forced_tool_call(TOPIC_LIST_REQUEST_PROMPT, LIST_TOPICS_TOOL)
+        topics_text = self._continue()
+        if topics_text is None:
             return
-        print(f"\n{response}\n")
+        print(f"\n{topics_text}\n")
 
-        # Loop: get topic/difficulty, fetch quizzes, retry if no results
         while True:
             topic = input("What topic would you like to be quizzed on? ").strip()
             if not topic:
@@ -126,28 +140,22 @@ class QuizTutor:
             if difficulty not in ["easy", "medium", "hard"]:
                 difficulty = "medium"
 
-            num_questions = input("How many questions? [default: 5] ").strip()
-            if not num_questions:
-                num_questions = "5"
-            else:
-                try:
-                    num_questions = str(int(num_questions))
-                except ValueError:
-                    num_questions = "5"
+            quizzes_result = self._forced_tool_call(
+                get_list_quizzes_prompt(topic, difficulty), LIST_QUIZZES_TOOL
+            )
 
-            prompt = get_quiz_start_prompt(topic, difficulty, num_questions)
-            response = self.chat(prompt)
-            if response is None:
-                return
-
-            print(f"\n{response}\n")
-
-            # Check if list_quizzes returned no results
-            if "no_results" in self._last_tool_statuses:
-                print("Let's pick a topic from the list again.\n")
+            if quizzes_result["status"] == "no_results":
+                print(
+                    f"\nNo quizzes found for '{topic}' at {difficulty} difficulty. "
+                    f"Let's pick another topic.\n"
+                )
                 continue
 
-            # Got real questions — proceed to answer loop
+            self._forced_tool_call(SELECT_QUIZ_PROMPT, GET_QUIZ_TOOL)
+            first_question_text = self._continue()
+            if first_question_text is None:
+                return
+            print(f"\n{first_question_text}\n")
             break
 
         self._quiz_loop()
