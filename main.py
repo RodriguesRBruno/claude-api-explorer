@@ -48,10 +48,16 @@ class QuizTutor:
         """Initialize Anthropic client with OAuth token or API key"""
         oauth_token = os.getenv("CLAUDE_CODE_OAUTH_TOKEN")
         api_key = os.getenv("ANTHROPIC_API_KEY")
-
+        open_router_api_key = os.getenv("OPEN_ROUTER_API_KEY")
         if oauth_token:
             print("✓ Using OAuth token for authentication")
             return Anthropic(auth_token=oauth_token)
+        elif open_router_api_key:
+            print("✓ Using Open Router API Key for authentication")
+            self.model = "anthropic/claude-haiku-4-5"
+            return Anthropic(
+                base_url="https://openrouter.ai/api", auth_token=open_router_api_key
+            )
         elif api_key:
             print("✓ Using API key for authentication")
             return Anthropic(api_key=api_key)

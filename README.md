@@ -32,7 +32,11 @@ cp .env.example .env
 Then edit `.env` and provide:
 
 - **QUIZ_API_KEY**: Obtain from [quizapi.io](https://quizapi.io/) — they offer a free tier with 100 requests/day, sufficient for this project.
-- **Claude authentication**: Provide either `CLAUDE_CODE_OAUTH_TOKEN` (preferred if running via Claude Code) or `ANTHROPIC_API_KEY` from [console.anthropic.com](https://console.anthropic.com). Either one suffices; the app checks them in that order.
+- **Claude authentication**: Provide either any one of:
+  -  `CLAUDE_CODE_OAUTH_TOKEN` (preferred if running via Claude Code); 
+  -  `OPEN_ROUTER_API_KEY` if one is available to you or;
+  -  `ANTHROPIC_API_KEY` from [console.anthropic.com](https://console.anthropic.com). 
+Any one of these suffices; the app checks them in that order.
 
 ### Install and run
 
