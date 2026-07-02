@@ -7,8 +7,8 @@ import pytest
 from anthropic import RateLimitError
 
 from main import FORCED_TOOL_TEMPERATURE, QuizTutor
-from prompts import HINT_REQUEST_PROMPT, QUIZ_TUTOR_SYSTEM_PROMPT
-from quiz_result import QuizResult
+from utils.prompts import HINT_REQUEST_PROMPT, QUIZ_TUTOR_SYSTEM_PROMPT
+from utils.quiz_result import QuizResult
 
 
 @pytest.fixture
@@ -634,7 +634,7 @@ class TestPromptBuilders:
 
     def test_get_question_feedback_prompt_matched_answer(self):
         """get_question_feedback_prompt for matched wrong answer includes explanation."""
-        from prompts import get_question_feedback_prompt
+        from utils.prompts import get_question_feedback_prompt
 
         result = QuizResult(
             question_number=1,
@@ -655,7 +655,7 @@ class TestPromptBuilders:
 
     def test_get_question_feedback_prompt_unmatched_answer(self):
         """get_question_feedback_prompt for unmatched answer has different phrasing."""
-        from prompts import get_question_feedback_prompt
+        from utils.prompts import get_question_feedback_prompt
 
         result = QuizResult(
             question_number=1,
@@ -675,7 +675,7 @@ class TestPromptBuilders:
 
     def test_get_question_feedback_prompt_omits_empty_explanation(self):
         """get_question_feedback_prompt should omit explanation line when empty."""
-        from prompts import get_question_feedback_prompt
+        from utils.prompts import get_question_feedback_prompt
 
         result = QuizResult(
             question_number=1,
@@ -692,7 +692,7 @@ class TestPromptBuilders:
 
     def test_get_areas_of_improvement_prompt_aggregates(self):
         """get_areas_of_improvement_prompt aggregates wrong results and feedback."""
-        from prompts import get_areas_of_improvement_prompt
+        from utils.prompts import get_areas_of_improvement_prompt
 
         wrong_results = [
             QuizResult(

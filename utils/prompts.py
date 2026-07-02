@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from quiz_result import QuizResult
+    from utils.quiz_result import QuizResult
 
 """System prompts and prompt templates for Quiz Tutor application."""
 

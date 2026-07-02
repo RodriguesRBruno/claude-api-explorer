@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest import mock
 
 from main import QuizTutor
-from prompts import PROMPT_STRATEGIES
+from utils.prompts import PROMPT_STRATEGIES
 
 CANNED_INPUTS = [
     "Python",

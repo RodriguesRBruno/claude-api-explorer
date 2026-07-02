@@ -1,7 +1,7 @@
 import os
 import json
 from anthropic import Anthropic, RateLimitError, APIError
-from prompts import (
+from utils.prompts import (
     QUIZ_TUTOR_SYSTEM_PROMPT,
     QUIZ_SUMMARY_PROMPT,
     get_list_quizzes_prompt,
@@ -12,7 +12,7 @@ from prompts import (
     get_question_feedback_prompt,
     get_areas_of_improvement_prompt,
 )
-from quiz_api import (
+from utils.quiz_api import (
     LIST_TOPICS_TOOL,
     LIST_QUIZZES_TOOL,
     GET_QUIZ_TOOL,
@@ -20,7 +20,7 @@ from quiz_api import (
     grade_answer,
     FatalQuizApiError,
 )
-from quiz_result import QuizResult
+from utils.quiz_result import QuizResult
 
 
 FORCED_TOOL_TEMPERATURE = 0.0
